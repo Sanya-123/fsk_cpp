@@ -16,11 +16,8 @@ typedef struct
 }MyComplex_f;
 
 typedef enum{
-    BPSK = 0,
-    QPSK = 1,
-    QAM16 = 2,
-    QAM64 = 3,
-    QAM256 = 4,
+    _2FSK = 0,
+    _4FSK = 1,
 }Modulation;
 
 //TODO add compensation to define for faster FFT
@@ -48,8 +45,8 @@ typedef enum{
 #define SYN_TIME_DATA_SPS           0x0F0F0F0F
 #define SYN_CODE                    0xAC8937BD
 
-#define POROG_FIND_PREAMBLE         29/*6000000000*//*400000*/
-#define POROG_DATA_END              6000//4000
+#define POROG_FIND_PREAMBLE         30/*6000000000*//*400000*/
+#define POROG_DATA_END              3000//4000
 #define DETECT_POWER                700000/*20000000*/
 #define FULL_DETECT_PREAMBLE        1
 #define POWER_MEAN_SIZE             16
@@ -58,8 +55,15 @@ typedef enum{
 #define USE_FIXED_FRAME_SIZE        0
 #define FIXED_FRAME_SIZE            1200  /*~1 WAKE frame with 1024 bytes data*/
 
-#define TX_VCO_STEP                 120.0 /*Modulate freq step per symbols*/ /*optimal 60-90*/
+#define TX_VCO_STEP                 90.0 /*Modulate freq step per symbols*/ /*optimal 60-90*/
 #define MAX_SPS                     16
+
+//4FSK
+#define TX_VCO_4FSK_0               -90.0
+#define TX_VCO_4FSK_1               -30.0
+#define TX_VCO_4FSK_3               +30.0
+#define TX_VCO_4FSK_2               +90.0
+#define RX_POROG_RESHENIE           10000   /*значение куото определяет порог выбора бвайта*/
 
 
 #endif // COMMON_FSK_H

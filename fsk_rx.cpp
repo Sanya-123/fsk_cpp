@@ -1,6 +1,13 @@
 #include "fsk_rx.h"
-#include <QtMath>
+//#include <QtMath>
 #include <QDebug>
+
+#ifndef M_PI
+#define M_PI		3.14159265358979323846
+#endif
+#ifndef M_PI_2
+#define M_PI_2		1.57079632679489661923
+#endif
 
 float ApproxAtan(float z)
 {
@@ -9,7 +16,7 @@ float ApproxAtan(float z)
     return (n1 + n2 * z * z) * z;
 }
 
-float fabsf(float a)
+inline float fabsf(float a)
 {
     return a > 0 ? a : -a;
 }
@@ -190,7 +197,7 @@ bool findFreamble(float *buffSync)
         summ += !((buffSync[j] > 0) & (SYN_TIME_DATA_SPS >> j));
 
 #if DETECT_POWER_PREAMBLE > 0
-        power += qAbs(buffSync[j]);
+        power += fabsf(buffSync[j]);
 #endif
     }
 
@@ -201,10 +208,46 @@ bool findFreamble(float *buffSync)
 #endif
 }
 
+inline bool rxNFSK_SyncTime(float freq, float power)
+{
+    static uint32_t bytesBufferSync = 0;
+    static float buffSync[SYNC_FRAME_SIZE + ZEROS_DATA_SIZE] = {0};
+
+
+    //if buffer not full onli add to buff
+    if(bytesBufferSync < (SYNC_FRAME_SIZE + ZEROS_DATA_SIZE))
+    {
+        buffSync[bytesBufferSync++] = freq;
+    }
+    else//else offset buffer
+    {
+        //offset buffer
+        for(uint32_t j = 1; j < (SYNC_FRAME_SIZE + ZEROS_DATA_SIZE); j++)
+            buffSync[j - 1] = buffSync[j];
+
+        buffSync[(SYNC_FRAME_SIZE + ZEROS_DATA_SIZE) - 1] = freq;
+    }
+
+    if((bytesBufferSync == (SYNC_FRAME_SIZE + ZEROS_DATA_SIZE)) && (power > DETECT_POWER))
+    {
+        if(findFreamble(buffSync))
+        {
+            bytesBufferSync = 0;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+#define CODE_SYNC_PATH      do { rechenie = tmpSumm > 0; /*если частота > 0 то значить передовалась 1*/ \
+                                static uint32_t syncCoteRes = 0; \
+                                syncCoteRes = (syncCoteRes >> 1) | (rechenie << 31); \
+                                if(syncCoteRes == SYN_CODE) state = Resive;  \
+                            } while(0);
+
 uint32_t rx2FSK(MyComplex *in, uint32_t sizeIn, uint16_t sps, uint8_t *resData)
 {
-    static float buffSync[SYNC_FRAME_SIZE + ZEROS_DATA_SIZE] = {0};
-    static uint32_t bytesBufferSync = 0;
     static StateFreqRx state = SyncTime;
     static float val;
     uint32_t numButes = 0;
@@ -222,45 +265,21 @@ uint32_t rx2FSK(MyComplex *in, uint32_t sizeIn, uint16_t sps, uint8_t *resData)
             static float power = 0;
             power = (in[i].real*in[i].real + in[i].image*in[i].image);
 
-
-
-            //if buffer not full onli add to buff
-            if(bytesBufferSync < (SYNC_FRAME_SIZE + ZEROS_DATA_SIZE))
+            if(rxNFSK_SyncTime(val, power))
             {
-                buffSync[bytesBufferSync] = val;
-
-                bytesBufferSync++;
-            }
-            else//else offset buffer
-            {
-                //offset buffer
-                for(uint32_t j = 1; j < (SYNC_FRAME_SIZE + ZEROS_DATA_SIZE); j++)
-                    buffSync[j - 1] = buffSync[j];
-
-                buffSync[(SYNC_FRAME_SIZE + ZEROS_DATA_SIZE) - 1] = val;
-            }
-
-            if((bytesBufferSync == (SYNC_FRAME_SIZE + ZEROS_DATA_SIZE)) && (power > DETECT_POWER))
-            {
-                if(findFreamble(buffSync))
-                {
-                    state = SyncCode;
-                    bytesBufferSync = 0;
+                state = SyncCode;
 #if USE_FIXED_FRAME_SIZE
-                    _numButes = 0;
+                _numButes = 0;
 #endif
-                }
             }
-
-
         }
         else
         {
 
             static uint16_t spsR = 0;
-            static bool rechenie;
+            static uint8_t rechenie;
             static uint8_t numBite = 0;
-            static uint8_t byte;
+            static uint8_t byte = 0;
             static float tmpSumm;
 
             static float powerSymbols = 0;
@@ -289,9 +308,9 @@ uint32_t rx2FSK(MyComplex *in, uint32_t sizeIn, uint16_t sps, uint8_t *resData)
 #endif
 
             if(spsR == 0)
-                powerSymbols = qAbs(val);
+                powerSymbols = fabsf(val);
             else
-                powerSymbols += qAbs(val);
+                powerSymbols += fabsf(val);
 
 
             spsR++;
@@ -307,24 +326,22 @@ uint32_t rx2FSK(MyComplex *in, uint32_t sizeIn, uint16_t sps, uint8_t *resData)
                     continue;
                 }
 
-                rechenie = tmpSumm > 0;//если частота > 0 то значить передовалась 1
-
                 if(state == SyncCode)
                 {
-                    static uint32_t syncCoteRes = 0;
-                    syncCoteRes = (syncCoteRes >> 1) | (rechenie << 31);
+//                    rechenie = tmpSumm > 0;//если частота > 0 то значить передовалась 1
+//                    static uint32_t syncCoteRes = 0;
+//                    syncCoteRes = (syncCoteRes >> 1) | (rechenie << 31);
 
-                    if(syncCoteRes == SYN_CODE)
-                    {
-                        state = Resive;
-                    }
+//                    if(syncCoteRes == SYN_CODE)
+//                    {
+//                        state = Resive;
+//                    }
+                    CODE_SYNC_PATH
                 }
                 else
                 {
-                    if(rechenie)
-                        byte |= 1 << numBite;
-                    else
-                        byte &= ~(1 << numBite);
+                    rechenie = tmpSumm > 0;//если частота > 0 то значить передовалась 1
+                    byte |= rechenie << numBite;
 
                     numBite++;
 
@@ -332,6 +349,7 @@ uint32_t rx2FSK(MyComplex *in, uint32_t sizeIn, uint16_t sps, uint8_t *resData)
                     {
                         resData[numButes++] = byte;
                         numBite = 0;
+                        byte = 0;
 
 #if USE_FIXED_FRAME_SIZE
                         _numButes++;
@@ -352,3 +370,151 @@ uint32_t rx2FSK(MyComplex *in, uint32_t sizeIn, uint16_t sps, uint8_t *resData)
 
     return numButes;
 }
+
+uint32_t rx4FSK(MyComplex *in, uint32_t sizeIn, uint16_t sps, uint8_t *resData)
+{
+    static StateFreqRx state = SyncTime;
+    static float val;
+    uint32_t numButes = 0;
+
+#if USE_FIXED_FRAME_SIZE
+    static uint32_t _numButes = 0;
+#endif
+
+    for(uint32_t i = 0; i < sizeIn; i++)
+    {
+        val = freqDetector(in[i]);//detect freq
+
+        if(state == SyncTime)
+        {
+            static float power = 0;
+            power = (in[i].real*in[i].real + in[i].image*in[i].image);
+
+            if(rxNFSK_SyncTime(val, power))
+            {
+                state = SyncCode;
+#if USE_FIXED_FRAME_SIZE
+                _numButes = 0;
+#endif
+            }
+        }
+        else
+        {
+
+            static uint16_t spsR = 0;
+            static uint8_t rechenie;
+            static uint8_t numBite = 0;
+            static uint8_t byte = 0;
+            static float tmpSumm;
+
+            static float powerSymbols = 0;
+
+
+#if DETECT_BIT_METOD == 0
+            //беру только средний отсчет
+            if(spsR == sps/2)
+                tmpSumm = val;
+#endif
+
+#if DETECT_BIT_METOD == 1
+            //WARNING workc only with sps > 3
+            //не учитываю крайние отсчеты
+            if(spsR == 1)
+                tmpSumm = val;
+            else if((spsR > 1) && (spsR < (sps - 1)))
+                tmpSumm += val;
+#endif
+
+#if DETECT_BIT_METOD == 2
+            //просумирую все отссчеты в посылке для принятия решения
+            if(spsR == 0)
+                tmpSumm = val;
+            else
+                tmpSumm += val;
+#endif
+
+            if(spsR == 0)
+                powerSymbols = fabsf(val);
+            else
+                powerSymbols += fabsf(val);
+
+
+            spsR++;
+
+            if(spsR == sps)
+            {
+                spsR = 0;
+
+                if((powerSymbols/sps) < POROG_DATA_END)//если принятое значения меньше какогото погрога то значить посылка закончилась
+                {
+                    state = SyncTime;
+                    numBite = 0;
+                    continue;
+                }
+
+                if(state == SyncCode)
+                {
+                    CODE_SYNC_PATH;
+                }
+                else
+                {
+#if DETECT_BIT_METOD == 0
+//                    tmpSumm = tmpSumm;
+#elif DETECT_BIT_METOD == 1
+                    tmpSumm = tmpSumm/(sps - 2);//WARNING workc only with sps > 3
+#else
+                    tmpSumm = tmpSumm/sps;
+#endif
+                    //принятие решение
+                    //TODO
+//                    static const uint8_t gray[4] = {0, 1, 3, 2};
+
+//                    tmpSumm += 16375 + 5470;
+//                    rechenie = tmpSumm/12000;
+//                    rechenie = gray[rechenie];
+
+
+                    rechenie = tmpSumm > 0 ? 2 : 0;
+                    rechenie |= fabsf(tmpSumm) > RX_POROG_RESHENIE ? 0 : 1;
+
+//                    if(tmpSumm > RX_POROG_RESHENIE)
+//                        rechenie = 2;
+//                    else if(tmpSumm > 0)
+//                        rechenie = 3;
+//                    else if(tmpSumm > (-RX_POROG_RESHENIE))
+//                        rechenie = 1;
+//                    else
+//                        rechenie = 0;
+
+
+                    byte |= rechenie << numBite;
+
+                    numBite+=2;
+
+                    if(numBite == 8)
+                    {
+                        resData[numButes++] = byte;
+                        numBite = 0;
+                        byte = 0;
+
+#if USE_FIXED_FRAME_SIZE
+                        _numButes++;
+
+                        if(_numButes == FIXED_FRAME_SIZE)
+                        {
+                            state = Sync;
+                            _numButes = 0;
+                        }
+#endif
+                    }
+                }
+            }
+
+
+        }
+    }
+
+    return numButes;
+}
+
+#undef CODE_SYNC_PATH

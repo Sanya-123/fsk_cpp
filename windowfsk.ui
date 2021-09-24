@@ -27,7 +27,7 @@
       <item>
        <widget class="QLineEdit" name="lineEdit_fileData">
         <property name="text">
-         <string>/home/user/Projects//FPGA/Lib_myOFDM/testBanch/testDataOFDM.txt</string>
+         <string>testDataOFDM.txt</string>
         </property>
        </widget>
       </item>
@@ -59,6 +59,13 @@
        <widget class="QPushButton" name="pushButton_modulate">
         <property name="text">
          <string>modulate</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="pushButton_tests">
+        <property name="text">
+         <string>tests</string>
         </property>
        </widget>
       </item>
@@ -187,6 +194,15 @@
                </color>
               </brush>
              </colorrole>
+             <colorrole role="PlaceholderText">
+              <brush brushstyle="NoBrush">
+               <color alpha="128">
+                <red>4</red>
+                <green>132</green>
+                <blue>255</blue>
+               </color>
+              </brush>
+             </colorrole>
             </active>
             <inactive>
              <colorrole role="Button">
@@ -234,6 +250,15 @@
                </color>
               </brush>
              </colorrole>
+             <colorrole role="PlaceholderText">
+              <brush brushstyle="NoBrush">
+               <color alpha="128">
+                <red>4</red>
+                <green>132</green>
+                <blue>255</blue>
+               </color>
+              </brush>
+             </colorrole>
             </inactive>
             <disabled>
              <colorrole role="Button">
@@ -278,6 +303,15 @@
                 <red>46</red>
                 <green>47</green>
                 <blue>48</blue>
+               </color>
+              </brush>
+             </colorrole>
+             <colorrole role="PlaceholderText">
+              <brush brushstyle="NoBrush">
+               <color alpha="128">
+                <red>4</red>
+                <green>132</green>
+                <blue>255</blue>
                </color>
               </brush>
              </colorrole>
@@ -429,7 +463,7 @@
      <x>0</x>
      <y>0</y>
      <width>738</width>
-     <height>22</height>
+     <height>20</height>
     </rect>
    </property>
   </widget>

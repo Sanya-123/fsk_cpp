@@ -15,6 +15,7 @@
 //+-32768
 float freqDetector(MyComplex in);
 uint32_t rx2FSK(MyComplex *in, uint32_t sizeIn, uint16_t sps, uint8_t *resData);
+uint32_t rx4FSK(MyComplex *in, uint32_t sizeIn, uint16_t sps, uint8_t *resData);
 
 
 #endif // FSK_RX_H

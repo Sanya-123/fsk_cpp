@@ -37,6 +37,8 @@ private slots:
 
     void on_pushButton_testReciveData_clicked();
 
+    void on_pushButton_tests_clicked();
+
 private:
     void initGraphic(QWidget *widget);
     void testGenData();
@@ -51,6 +53,7 @@ private:
     QVector <uint8_t> testData;
     QVector<MyComplex> txFrame, rxFrame;
     QVector <uint8_t> wakePacket;
+    Modulation mod;
 };
 
 #endif // WINDOWFSK_H

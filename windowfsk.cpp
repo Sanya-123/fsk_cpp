@@ -16,8 +16,7 @@ WindowFSK::WindowFSK(QWidget *parent) :
     initGraphic(ui->widget_plotPower);
 
     ui->comboBox_modulation->addItem("2FSK", 0);
-    ui->comboBox_modulation->addItem("GFSK", 1);
-//    ui->comboBox_modulation->addItem("4FSK", 2);
+    ui->comboBox_modulation->addItem("4FSK", 1);
 //    ui->comboBox_modulation->addItem("4GFSK", 3);
 //    ui->comboBox_modulation->addItem("8FSK", 4);
 //    ui->comboBox_modulation->addItem("8GFSK", 5);
@@ -136,14 +135,27 @@ void WindowFSK::testGenData()
 
 void WindowFSK::testGenFrame()
 {
-    wakePacket.resize(ui->spinBox_symbolsData->value()*1.1 + 100);
-    uint16_t sizePacket = genPaccketWake(0x55, testData.data(), ui->spinBox_symbolsData->value(), wakePacket.data());
+//    wakePacket.resize(ui->spinBox_symbolsData->value()*1.1 + 100);
+//    uint16_t sizePacket = genPaccketWake(0x55, testData.data(), ui->spinBox_symbolsData->value(), wakePacket.data());
 
-    wakePacket.resize(sizePacket);
+//    wakePacket.resize(sizePacket);
 
-    txFrame.resize(getTx2FSK_size(sizePacket, USE_SPS));
+    //no wake2
+    wakePacket = testData.mid(0, ui->spinBox_symbolsData->value());
+    uint16_t sizePacket = wakePacket.size();
 
-    tx2FSK(wakePacket.data(), sizePacket, USE_SPS, txFrame.data());
+    if(mod == _2FSK)
+    {
+        txFrame.resize(getTx2FSK_size(sizePacket, USE_SPS));
+
+        tx2FSK(wakePacket.data(), sizePacket, USE_SPS, txFrame.data());
+    }
+    else if(mod == _4FSK)
+    {
+        txFrame.resize(getTx4FSK_size(sizePacket, USE_SPS));
+
+        tx4FSK(wakePacket.data(), sizePacket, USE_SPS, txFrame.data());
+    }
 
 //    txFrame.append(txFrame);
 
@@ -163,16 +175,27 @@ void WindowFSK::testSpeed()
 {
     QVector<MyComplex> vcoData;
     uint8_t dataRess[2048];
-    vcoData.resize(getTx2FSK_size(ui->spinBox_symbolsData->value(), USE_SPS));
 
     MyComplex tmp;
     tmp.image = 153;
     tmp.real = 268;
 
     QTime timer(QTime::currentTime());
-    for(int i = 0; i < 100; i++)
+    if(mod == _2FSK)
     {
-        tx2FSK(testData.data(), ui->spinBox_symbolsData->value(), USE_SPS, vcoData.data());
+        vcoData.resize(getTx2FSK_size(ui->spinBox_symbolsData->value(), USE_SPS));
+        for(int i = 0; i < 100; i++)
+        {
+            tx2FSK(testData.data(), ui->spinBox_symbolsData->value(), USE_SPS, vcoData.data());
+        }
+    }
+    else if(mod == _4FSK)
+    {
+        vcoData.resize(getTx4FSK_size(ui->spinBox_symbolsData->value(), USE_SPS));
+        for(int i = 0; i < 100; i++)
+        {
+            tx4FSK(testData.data(), ui->spinBox_symbolsData->value(), USE_SPS, vcoData.data());
+        }
     }
 
     int ms = timer.elapsed();
@@ -182,9 +205,19 @@ void WindowFSK::testSpeed()
 
     ms = timer.elapsed();
 
-    for(int i = 0; i < 100; i++)
+    if(mod == _2FSK)
     {
-        rx2FSK(vcoData.data(), vcoData.size(), USE_SPS, dataRess);
+        for(int i = 0; i < 100; i++)
+        {
+            rx2FSK(vcoData.data(), vcoData.size(), USE_SPS, dataRess);
+        }
+    }
+    else if(mod == _4FSK)
+    {
+        for(int i = 0; i < 100; i++)
+        {
+            rx4FSK(vcoData.data(), vcoData.size(), USE_SPS, dataRess);
+        }
     }
     ms = timer.elapsed() - ms;
 
@@ -195,7 +228,15 @@ void WindowFSK::testSpeed()
 void WindowFSK::testRecive(QVector<MyComplex> data)
 {
     uint8_t dataRess[8192];
-    uint32_t resSize = rx2FSK(data.data(), data.size(), USE_SPS, dataRess);
+    uint32_t resSize = 0;
+    if(mod == _2FSK)
+    {
+        resSize = rx2FSK(data.data(), data.size(), USE_SPS, dataRess);
+    }
+    else if(mod == _4FSK)
+    {
+        resSize = rx4FSK(data.data(), data.size(), USE_SPS, dataRess);
+    }
 
     int errors = 0;
     uint8_t err;
@@ -276,9 +317,17 @@ void WindowFSK::testPower(QVector<MyComplex> data)
 void WindowFSK::on_pushButton_modulate_clicked()
 {
 //    testGenData();
+    if(ui->comboBox_modulation->currentIndex() == 0)
+        mod = _2FSK;
+    else
+        mod = _4FSK;
     testGenFrame();
-    testRecive(txFrame);
+}
 
+void WindowFSK::on_pushButton_tests_clicked()
+{
+    // /home/user/Projects//FPGA/Lib_myOFDM/testBanch/testDataOFDM.txt
+    testRecive(txFrame);
 
     testFreqDetector(txFrame);
     testPower(txFrame);

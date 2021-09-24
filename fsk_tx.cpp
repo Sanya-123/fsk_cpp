@@ -47,26 +47,30 @@ uint32_t getTx2FSK_size(uint32_t sizeData, uint16_t sps)
     uint32_t frams = sizeData%FIXED_FRAME_SIZE == 0 ? sizeData/FIXED_FRAME_SIZE : sizeData/FIXED_FRAME_SIZE + 1;
     return (ZEROS_DATA_SIZE + SYNC_FRAME_SIZE + ZEROS_DATA_SIZE + SYNC_CODE_SIZE + FIXED_FRAME_SIZE*8*sps + ZEROS_DATA_SIZE)*frams;
 #else
-    return ZEROS_DATA_SIZE + SYNC_FRAME_SIZE + ZEROS_DATA_SIZE + (SYNC_CODE_SIZE*sps) + sizeData*8*sps + ZEROS_DATA_SIZE;
+    return ZEROS_DATA_SIZE + SYNC_FRAME_SIZE + 2*sps + (SYNC_CODE_SIZE*sps) + sizeData*8*sps + ZEROS_DATA_SIZE;
 #endif
 }
 
-void tx2FSK(uint8_t *data, uint32_t sizeData, uint16_t sps, MyComplex *txData)
+uint32_t getTx4FSK_size(uint32_t sizeData, uint16_t sps)
+{
+#if USE_FIXED_FRAME_SIZE
+    //считаю количества дарров исходяч из размера данных (добию кадр на 1 больше если данных не кратно количетвам кадров)
+    uint32_t frams = sizeData%FIXED_FRAME_SIZE == 0 ? sizeData/FIXED_FRAME_SIZE : sizeData/FIXED_FRAME_SIZE + 1;
+    return (ZEROS_DATA_SIZE + SYNC_FRAME_SIZE + ZEROS_DATA_SIZE + SYNC_CODE_SIZE + FIXED_FRAME_SIZE*4*sps + ZEROS_DATA_SIZE)*frams;
+#else
+    return ZEROS_DATA_SIZE + SYNC_FRAME_SIZE + 2*sps + (SYNC_CODE_SIZE*sps) + sizeData*4*sps + ZEROS_DATA_SIZE;
+#endif
+}
+
+inline void txNFSK_addHeader(uint16_t sps, MyComplex *txData, uint32_t *pointTx)
 {
     const float tx1 = TX_VCO_STEP, tx0 = -TX_VCO_STEP;
-
-    uint32_t numBytes = 0;
-    uint32_t numBits = 0;
     float tx;
-
-    uint32_t numFrame = 0;//если фиксированный размер кадра
-    uint32_t oneFrameSize = ZEROS_DATA_SIZE + SYNC_FRAME_SIZE + ZEROS_DATA_SIZE + (SYNC_CODE_SIZE*sps) + sizeData*8*sps + ZEROS_DATA_SIZE;
-
-    uint32_t iteration = 0;
 
     float syncFrameTime[SYNC_FRAME_SIZE];
     float syncFrameCOde[SYNC_CODE_SIZE*MAX_SPS];
     int tmp = 0;
+
 
     /**************************Some init data **************************/
     for(int i = 0; i < 32/*bites in sync time data*/; i++)
@@ -92,6 +96,39 @@ void tx2FSK(uint8_t *data, uint32_t sizeData, uint16_t sps, MyComplex *txData)
     }
     /****************************************************/
 
+    //заголовочный порог
+    for(uint32_t i = 0; i < ZEROS_DATA_SIZE; i++)
+        txData[(*pointTx)++] = vco(0);
+
+//    //add preambles
+//    for(uint32_t i = 0; i < SYNC_FRAME_SIZE; i++)
+//        txData[iteration++] = vco(syncFrame[i]*180.0/32768);
+
+    //add preambles time
+    for(uint32_t i = 0; i < SYNC_FRAME_SIZE; i++)
+        txData[(*pointTx)++] = vco(syncFrameTime[i]);
+
+    //add zeross
+    for(uint32_t i = 0; i < (2*sps); i++)
+        txData[(*pointTx)++] = vco(tx0);
+
+    //add preambles code
+    for(uint32_t i = 0; i < (SYNC_CODE_SIZE*sps); i++)
+        txData[(*pointTx)++] = vco(syncFrameCOde[i]);
+}
+
+void tx2FSK(uint8_t *data, uint32_t sizeData, uint16_t sps, MyComplex *txData)
+{
+    const float tx1 = TX_VCO_STEP, tx0 = -TX_VCO_STEP;
+
+    uint32_t numBytes = 0;
+    uint32_t numBits = 0;
+    float tx;
+
+    uint32_t numFrame = 0;//если фиксированный размер кадра
+    uint32_t oneFrameSize = ZEROS_DATA_SIZE + SYNC_FRAME_SIZE + ZEROS_DATA_SIZE + (SYNC_CODE_SIZE*sps) + sizeData*8*sps + ZEROS_DATA_SIZE;
+
+    uint32_t iteration = 0;
 
 
 #if USE_FIXED_FRAME_SIZE
@@ -102,25 +139,7 @@ void tx2FSK(uint8_t *data, uint32_t sizeData, uint16_t sps, MyComplex *txData)
     {
 #endif
 
-    //заголовочный порог
-    for(uint32_t i = 0; i < ZEROS_DATA_SIZE; i++)
-        txData[iteration++] = vco(0);
-
-//    //add preambles
-//    for(uint32_t i = 0; i < SYNC_FRAME_SIZE; i++)
-//        txData[iteration++] = vco(syncFrame[i]*180.0/32768);
-
-    //add preambles time
-    for(uint32_t i = 0; i < SYNC_FRAME_SIZE; i++)
-        txData[iteration++] = vco(syncFrameTime[i]);
-
-    //add zeross
-    for(uint32_t i = 0; i < (2*sps); i++)
-        txData[iteration++] = vco(tx0);
-
-    //add preambles code
-    for(uint32_t i = 0; i < (SYNC_CODE_SIZE*sps); i++)
-        txData[iteration++] = vco(syncFrameCOde[i]);
+       txNFSK_addHeader(sps, txData, &iteration);
 
 #if USE_FIXED_FRAME_SIZE
     for(uint32_t i = 0; i < FIXED_FRAME_SIZE*8; i++)
@@ -136,10 +155,11 @@ void tx2FSK(uint8_t *data, uint32_t sizeData, uint16_t sps, MyComplex *txData)
         else
             tx = tx0;
 #else
-        if((data[numBytes] >> numBits) & 0x01)
-            tx = tx1;
-        else
-            tx = tx0;
+        tx = (data[numBytes] >> numBits) & 0x01 ? tx1 : tx0;
+//        if((data[numBytes] >> numBits) & 0x01)
+//            tx = tx1;
+//        else
+//            tx = tx0;
 #endif
 
         for(uint16_t j = 0; j < sps; j++)
@@ -162,6 +182,68 @@ void tx2FSK(uint8_t *data, uint32_t sizeData, uint16_t sps, MyComplex *txData)
 #if USE_FIXED_FRAME_SIZE
     }
 #endif
+}
 
+void tx4FSK(uint8_t *data, uint32_t sizeData, uint16_t sps, MyComplex *txData)
+{
+    const float _4_tx[4] = {TX_VCO_4FSK_0, TX_VCO_4FSK_1, TX_VCO_4FSK_2, TX_VCO_4FSK_3};
+
+    uint32_t numBytes = 0;
+    uint32_t numBits = 0;
+    float tx;
+
+    uint32_t numFrame = 0;//если фиксированный размер кадра
+    uint32_t oneFrameSize = ZEROS_DATA_SIZE + SYNC_FRAME_SIZE + ZEROS_DATA_SIZE + (SYNC_CODE_SIZE*sps) + sizeData*4*sps + ZEROS_DATA_SIZE;
+
+    uint32_t iteration = 0;
+
+
+
+
+#if USE_FIXED_FRAME_SIZE
+    //считаю количества дарров исходяч из размера данных (добию кадр на 1 больше если данных не кратно количетвам кадров)
+    uint32_t frams = sizeData%FIXED_FRAME_SIZE == 0 ? sizeData/FIXED_FRAME_SIZE : sizeData/FIXED_FRAME_SIZE + 1;
+    oneFrameSize = ZEROS_DATA_SIZE + SYNC_FRAME_SIZE + FIXED_FRAME_SIZE*4*sps + ZEROS_DATA_SIZE;
+    for(; numFrame < frams; numFrame++)
+    {
+#endif
+
+        txNFSK_addHeader(sps, txData, &iteration);
+
+#if USE_FIXED_FRAME_SIZE
+    for(uint32_t i = 0; i < FIXED_FRAME_SIZE*8; i++)
+#else
+    for(uint32_t i = 0; i < sizeData*4; i++)
+#endif
+    {
+#if USE_FIXED_FRAME_SIZE
+        if(numBytes >= sizeData)
+            tx = tx0;
+        else
+            tx = _4_tx[(data[numBytes] >> numBits) & 0x03];
+#else
+        tx = _4_tx[(data[numBytes] >> numBits) & 0x03];
+#endif
+
+        for(uint16_t j = 0; j < sps; j++)
+        {
+            txData[iteration++] = vco(tx);
+        }
+
+        numBits+=2;
+        if(numBits == 8)
+        {
+            numBits = 0;
+            numBytes++;
+        }
+    }
+
+    //хвостовой порог
+    for(uint32_t i = 0; i < ZEROS_DATA_SIZE; i++)
+        txData[iteration++] = vco(0);
+
+#if USE_FIXED_FRAME_SIZE
+    }
+#endif
 
 }
