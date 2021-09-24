@@ -180,6 +180,8 @@ void WindowFSK::testSpeed()
     tmp.image = 153;
     tmp.real = 268;
 
+    ui->textEdit->append("testSpeed");
+
     QTime timer(QTime::currentTime());
     if(mod == _2FSK)
     {
@@ -199,7 +201,8 @@ void WindowFSK::testSpeed()
     }
 
     int ms = timer.elapsed();
-    qDebug() << "Time use for 100 transmitte " << ms << "ms";
+    ui->textEdit->append(QString("Time use for 100 transmitte %1 ms").arg(ms));
+//    qDebug() << "Time use for 100 transmitte " << ms << "ms";
     for(int i = 0; i < 1000; i++)
         vcoData.prepend(tmp);
 
@@ -221,7 +224,9 @@ void WindowFSK::testSpeed()
     }
     ms = timer.elapsed() - ms;
 
-    qDebug() << "Time use for 100 recive " << ms << "ms";
+    ui->textEdit->append(QString("Time use for 100 recive %1 ms").arg(ms));
+//    qDebug() << "Time use for 100 recive " << ms << "ms";
+    ui->textEdit->append("\n");
 
 }
 

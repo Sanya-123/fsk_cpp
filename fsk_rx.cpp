@@ -1,12 +1,11 @@
 #include "fsk_rx.h"
 //#include <QtMath>
-#include <QDebug>
 
 #ifndef M_PI
-#define M_PI		3.14159265358979323846
+#define M_PI		3.14159265358979323846  /* pi */
 #endif
 #ifndef M_PI_2
-#define M_PI_2		1.57079632679489661923
+#define M_PI_2		1.57079632679489661923	/* pi/2 */
 #endif
 
 float ApproxAtan(float z)
@@ -445,7 +444,7 @@ uint32_t rx4FSK(MyComplex *in, uint32_t sizeIn, uint16_t sps, uint8_t *resData)
             {
                 spsR = 0;
 
-                if((powerSymbols/sps) < POROG_DATA_END)//если принятое значения меньше какогото погрога то значить посылка закончилась
+                if((powerSymbols/sps) < POROG_DATA_END_4FSK)//если принятое значения меньше какогото погрога то значить посылка закончилась
                 {
                     state = SyncTime;
                     numBite = 0;
