@@ -4,6 +4,7 @@
 #include "fsk_rx.h"
 #include <QDebug>
 #include "wake2.h"
+#include <volk/volk.h>
 
 WindowFSK::WindowFSK(QWidget *parent) :
     QMainWindow(parent),
@@ -24,6 +25,43 @@ WindowFSK::WindowFSK(QWidget *parent) :
 //    ui->comboBox_modulation->addItem("QAM16", QAM16);
 //    ui->comboBox_modulation->addItem("QAM64", QAM64);
 //    ui->comboBox_modulation->addItem("QAM256", QAM256);
+
+//    lv_32fc_t * signal;
+//    unsigned int alignment = volk_get_alignment();
+//    signal = (lv_32fc_t*)volk_malloc(sizeof(lv_32fc_t)*(10), alignment);
+//    float* magnitude = (float*)volk_malloc(sizeof(float)*10, alignment);
+
+//    signal[0] = lv_cmake(100, 100);
+//    signal[1] = lv_cmake(10, 10);
+//    signal[2] = lv_cmake(2, 4);
+//    signal[3] = lv_cmake(8, 93);
+
+//    volk_32fc_magnitude_squared_32f(magnitude, signal, 4);
+
+//    for(int i = 0; i < 4; i ++)
+//    {
+//        qDebug() << magnitude[i];
+//    }
+
+//    volk_free(magnitude);
+//    volk_free(signal);
+
+//    qDebug() << sizeof(lv_16sc_t);
+
+//    lv_16sc_t mass[4];
+
+//    int16_t test[8] = {8,-15,
+//                       64,93,
+//                       -5,60,
+//                      12,87};
+
+//    memcpy(mass, test, sizeof(lv_16sc_t)*4);
+
+//    for(int i = 0; i < 4; i++)
+//        qDebug() << mass[i].real() << mass[i].imag();
+
+//    qDebug() << sizeof(MyComplex);
+
 }
 
 WindowFSK::~WindowFSK()
@@ -107,8 +145,32 @@ void WindowFSK::testGenData()
     MyComplex tmp = {183, 691};
     for(int i = 0; i < 100; i++)
         vcoData.prepend(tmp);
+#if USE_VOLK
+    FSK_RxStruct rxData;
+    rxData.sizeSignal = vcoData.size();
+    unsigned int alignment = volk_get_alignment();
+    rxData.signal = (lv_32fc_t*)volk_malloc(sizeof(lv_32fc_t)*(rxData.sizeSignal + 1), alignment);
+    rxData.signal_xConj = (lv_32fc_t*)volk_malloc(sizeof(lv_32fc_t)*(rxData.sizeSignal), alignment);
+    rxData.freq = (float*)volk_malloc(sizeof(float)*(rxData.sizeSignal), alignment);
+    rxData.power = (float*)volk_malloc(sizeof(float)*(rxData.sizeSignal), alignment);
+    rxData.signal_i16 = (lv_16sc_t*)volk_malloc(sizeof(lv_16sc_t)*(rxData.sizeSignal + 1), alignment);
 
+    rxData.oldData = lv_cmake(0, 0);
+
+    rxData.signal_i16[0] = rxData.oldData;
+    rxData.signal[0] = rxData.oldData;
+    memcpy(&rxData.signal_i16[1], vcoData.data(), sizeof(lv_16sc_t)*rxData.sizeSignal);
+    volk_16ic_convert_32fc(rxData.signal, rxData.signal_i16, rxData.sizeSignal + 1);
+
+
+//    for(uint32_t i = 0; i < rxData.sizeSignal; i++)
+//    {
+//        rxData.signal[i + 1] = lv_cmake(vcoData[i].real, vcoData[i].image);
+//    }
+    uint32_t resSize = rx2FSK(&rxData, USE_SPS, dataRes);
+#else
     uint32_t resSize = rx2FSK(vcoData.data(), vcoData.size(), USE_SPS, dataRes);
+#endif
 
     ui->textEdit->append("testGenData");
     ui->textEdit->append("Tx data = 0x" + QString::number(tmpData, 16).rightJustified(2, '0'));
@@ -131,6 +193,14 @@ void WindowFSK::testGenData()
     ui->widget_otputGraph->replot();
 
     testFreqDetector(vcoData);
+
+#if USE_VOLK
+    volk_free(rxData.freq);
+    volk_free(rxData.power);
+    volk_free(rxData.signal);
+    volk_free(rxData.signal_xConj);
+    volk_free(rxData.signal_i16);
+#endif
 }
 
 void WindowFSK::testGenFrame()
@@ -171,10 +241,18 @@ void WindowFSK::testGenFrame()
 
 }
 
+inline void repeater(MyComplex *vcoData, MyComplex *repeatData, int sizeData, int repaatTime)
+{
+    for(int i = 0; i < sizeData; i++)
+    {
+        repeatData[i*repaatTime] = vcoData[i];
+    }
+}
+
 void WindowFSK::testSpeed()
 {
-    QVector<MyComplex> vcoData;
-    uint8_t dataRess[2048];
+    QVector<MyComplex> vcoData, vcoDataRepat;
+    uint8_t dataRess[4096];
 
     MyComplex tmp;
     tmp.image = 153;
@@ -185,11 +263,18 @@ void WindowFSK::testSpeed()
     QTime timer(QTime::currentTime());
     if(mod == _2FSK)
     {
-        vcoData.resize(getTx2FSK_size(ui->spinBox_symbolsData->value(), USE_SPS));
+        vcoData.resize(getTx2FSK_size(ui->spinBox_symbolsData->value(), USE_SPS)*4);
+        vcoDataRepat.resize(getTx2FSK_size(ui->spinBox_symbolsData->value(), USE_SPS)*4);
+
+        memset(vcoDataRepat.data(), 0, vcoDataRepat.size()*sizeof(MyComplex));
         for(int i = 0; i < 100; i++)
         {
-            tx2FSK(testData.data(), ui->spinBox_symbolsData->value(), USE_SPS, vcoData.data());
+            tx2FSK(testData.data(), ui->spinBox_symbolsData->value(), USE_SPS, vcoData.data(), 3);
+//            repeater(vcoData.data(), vcoDataRepat.data(), vcoData.size(), 4);
         }
+
+        vcoData.resize(getTx2FSK_size(ui->spinBox_symbolsData->value(), USE_SPS));
+        tx2FSK(testData.data(), ui->spinBox_symbolsData->value(), USE_SPS, vcoData.data(), 1);
     }
     else if(mod == _4FSK)
     {
@@ -206,13 +291,48 @@ void WindowFSK::testSpeed()
     for(int i = 0; i < 1000; i++)
         vcoData.prepend(tmp);
 
+    int ms_1000, ms_11000;
+
+#if USE_VOLK
+    FSK_RxStruct rxData;
+    rxData.sizeSignal = vcoData.size();
+    unsigned int alignment = volk_get_alignment();
+    rxData.signal = (lv_32fc_t*)volk_malloc(sizeof(lv_32fc_t)*(rxData.sizeSignal + 1), alignment);
+    rxData.signal_xConj = (lv_32fc_t*)volk_malloc(sizeof(lv_32fc_t)*(rxData.sizeSignal), alignment);
+    rxData.freq = (float*)volk_malloc(sizeof(float)*(rxData.sizeSignal), alignment);
+    rxData.power = (float*)volk_malloc(sizeof(float)*(rxData.sizeSignal), alignment);
+    rxData.signal_i16 = (lv_16sc_t*)volk_malloc(sizeof(lv_16sc_t)*(rxData.sizeSignal + 1), alignment);
+#endif
+
+    for(int it = 0; it < 2; it++)
+    {
+
+#if USE_VOLK
+    rxData.oldData = lv_cmake(0, 0);
+
+    rxData.signal_i16[0] = rxData.oldData;
+    rxData.signal[0] = rxData.oldData;
+    memcpy(&rxData.signal_i16[1], vcoData.data(), sizeof(lv_16sc_t)*rxData.sizeSignal);
+    volk_16ic_convert_32fc(rxData.signal, rxData.signal_i16, rxData.sizeSignal + 1);
+
+
+//    for(uint32_t i = 0; i < rxData.sizeSignal; i++)
+//    {
+//        rxData.signal[i + 1] = lv_cmake(vcoData[i].real, vcoData[i].image);
+//    }
+#endif
+
     ms = timer.elapsed();
 
     if(mod == _2FSK)
     {
         for(int i = 0; i < 100; i++)
         {
+#if USE_VOLK
+            rx2FSK(&rxData, USE_SPS, dataRess);
+#else
             rx2FSK(vcoData.data(), vcoData.size(), USE_SPS, dataRess);
+#endif
         }
     }
     else if(mod == _4FSK)
@@ -225,8 +345,26 @@ void WindowFSK::testSpeed()
     ms = timer.elapsed() - ms;
 
     ui->textEdit->append(QString("Time use for 100 recive %1 ms").arg(ms));
+
+    if(it == 0)
+    {
+        ms_1000 = ms;
+        for(int i = 0; i < 10000; i++)
+            vcoData.prepend(tmp);
+    }
+    ms_11000 = ms;
+    }
+    ui->textEdit->append(QString("Time use for 100 sinhrinizations %1 ms").arg(ms_11000 - ms_1000));
 //    qDebug() << "Time use for 100 recive " << ms << "ms";
     ui->textEdit->append("\n");
+
+#if USE_VOLK
+    volk_free(rxData.freq);
+    volk_free(rxData.power);
+    volk_free(rxData.signal);
+    volk_free(rxData.signal_xConj);
+    volk_free(rxData.signal_i16);
+#endif
 
 }
 
@@ -234,9 +372,38 @@ void WindowFSK::testRecive(QVector<MyComplex> data)
 {
     uint8_t dataRess[8192];
     uint32_t resSize = 0;
+
+#if USE_VOLK
+    FSK_RxStruct rxData;
+    rxData.sizeSignal = data.size();
+    unsigned int alignment = volk_get_alignment();
+    rxData.signal = (lv_32fc_t*)volk_malloc(sizeof(lv_32fc_t)*(rxData.sizeSignal + 1), alignment);
+    rxData.signal_xConj = (lv_32fc_t*)volk_malloc(sizeof(lv_32fc_t)*(rxData.sizeSignal), alignment);
+    rxData.freq = (float*)volk_malloc(sizeof(float)*(rxData.sizeSignal), alignment);
+    rxData.power = (float*)volk_malloc(sizeof(float)*(rxData.sizeSignal), alignment);
+    rxData.signal_i16 = (lv_16sc_t*)volk_malloc(sizeof(lv_16sc_t)*(rxData.sizeSignal + 1), alignment);
+
+    rxData.oldData = lv_cmake(0, 0);
+
+    rxData.signal_i16[0] = rxData.oldData;
+    rxData.signal[0] = rxData.oldData;
+    memcpy(&rxData.signal_i16[1], data.data(), sizeof(lv_16sc_t)*rxData.sizeSignal);
+    volk_16ic_convert_32fc(rxData.signal, rxData.signal_i16, rxData.sizeSignal + 1);
+
+
+//    for(uint32_t i = 0; i < rxData.sizeSignal; i++)
+//    {
+//        rxData.signal[i + 1] = lv_cmake(vcoData[i].real, vcoData[i].image);
+//    }
+#endif
+
     if(mod == _2FSK)
     {
+#if USE_VOLK
+        resSize = rx2FSK(&rxData, USE_SPS, dataRess);
+#else
         resSize = rx2FSK(data.data(), data.size(), USE_SPS, dataRess);
+#endif
     }
     else if(mod == _4FSK)
     {
@@ -264,6 +431,14 @@ void WindowFSK::testRecive(QVector<MyComplex> data)
                          "/" + QString::number(resSize, 10));
     ui->textEdit->append(QString::asprintf("Error bits %d/%d", errors, resSize*8));
     ui->textEdit->append("\n");
+
+#if USE_VOLK
+    volk_free(rxData.freq);
+    volk_free(rxData.power);
+    volk_free(rxData.signal);
+    volk_free(rxData.signal_xConj);
+    volk_free(rxData.signal_i16);
+#endif
 }
 
 void WindowFSK::testFreqDetector(QVector<MyComplex> data)

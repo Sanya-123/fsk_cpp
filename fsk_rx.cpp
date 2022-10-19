@@ -1,5 +1,14 @@
 #include "fsk_rx.h"
-//#include <QtMath>
+#if USE_VOLK
+//https://www.libvolk.org/doxygen/kernels.html
+//#define LV_HAVE_SSE4_1
+//#define LV_HAVE_SSE
+//#define LV_HAVE_GENERIC
+#include <volk/volk.h>
+#include <volk/volk_32fc_s32f_atan2_32f.h>
+#include <volk/volk_32fc_x2_multiply_conjugate_32fc.h>
+#include <volk/volk_32fc_magnitude_squared_32f.h>
+#endif
 
 #ifndef M_PI
 #define M_PI		3.14159265358979323846  /* pi */
@@ -170,7 +179,56 @@ float freqDetector(MyComplex in)
     oldData = in;
 
     return res/M_PI*32768;
+
+//    static MyComplex oldData = {0, 0};
+
+//    float res = -(in.real*oldData.image - in.image*oldData.real);
+
+//    oldData = in;
+
+//    if((in.real+in.image) == 0)
+//        return 0;
+
+
+//    return res/(in.real*in.real+in.image*in.image)/M_PI*32768;
 }
+
+#if USE_VOLK
+void freqDetectorVOLK(FSK_RxStruct *in)
+{
+//    lv_32fc_t * signal, *mult;
+//    unsigned int alignment = volk_get_alignment();
+//    signal = (lv_32fc_t*)volk_malloc(sizeof(lv_32fc_t)*(size + 1), alignment);
+//    mult = (lv_32fc_t*)volk_malloc(sizeof(lv_32fc_t)*(size), alignment);
+
+//    static MyComplex oldData = {0, 0};
+
+//    signal[0] = lv_cmake(oldData.real, oldData.image);
+//    for(uint32_t i = 0; i < size; i++)
+//    {
+//        signal[i + 1] = lv_cmake(in[i].real, in[i].image);
+//    }
+
+
+    volk_32fc_x2_multiply_conjugate_32fc(in->signal_xConj, &in->signal[1], in->signal, in->sizeSignal);
+
+    volk_32fc_s32f_atan2_32f(in->freq, in->signal_xConj, M_PI/32768, in->sizeSignal);
+
+
+//    for(uint32_t i = 0; i < size; i++)
+//    {
+//        out[i] = _ApproxAtan2(mult[i].imag(), mult[i].real())/M_PI*32768;
+//    }
+
+
+//    oldData = in[size-1];
+
+//    volk_free(signal);
+//    volk_free(mult);
+
+    in->oldData = in->signal[in->sizeSignal];
+}
+#endif
 
 bool findFreamble(float *buffSync)
 {
@@ -209,6 +267,29 @@ bool findFreamble(float *buffSync)
 
 inline bool rxNFSK_SyncTime(float freq, float power)
 {
+#if FAST_SYNC
+    static uint32_t bytesBufferSync = 0;
+    static uint32_t syncWorld = 0;
+
+    syncWorld = (syncWorld << 1) | freq > 0;
+
+    //if buffer not full onli add to buff
+    if(bytesBufferSync < (SYNC_FRAME_SIZE + ZEROS_DATA_SIZE))
+    {
+        bytesBufferSync++;
+    }
+
+    if((bytesBufferSync == (SYNC_FRAME_SIZE + ZEROS_DATA_SIZE)) && (power > DETECT_POWER))
+    {
+        if(syncWorld == SYN_TIME_DATA_SPS)
+        {
+            syncWorld = 0;
+            bytesBufferSync = 0;
+            return true;
+        }
+    }
+
+#else
     static uint32_t bytesBufferSync = 0;
     static float buffSync[SYNC_FRAME_SIZE + ZEROS_DATA_SIZE] = {0};
 
@@ -235,7 +316,7 @@ inline bool rxNFSK_SyncTime(float freq, float power)
             return true;
         }
     }
-
+#endif
     return false;
 }
 
@@ -245,7 +326,11 @@ inline bool rxNFSK_SyncTime(float freq, float power)
                                 if(syncCoteRes == SYN_CODE) state = Resive;  \
                             } while(0);
 
+#if USE_VOLK
+uint32_t rx2FSK(FSK_RxStruct *in, uint16_t sps, uint8_t *resData)
+#else
 uint32_t rx2FSK(MyComplex *in, uint32_t sizeIn, uint16_t sps, uint8_t *resData)
+#endif
 {
     static StateFreqRx state = SyncTime;
     static float val;
@@ -255,14 +340,27 @@ uint32_t rx2FSK(MyComplex *in, uint32_t sizeIn, uint16_t sps, uint8_t *resData)
     static uint32_t _numButes = 0;
 #endif
 
+#if USE_VOLK
+    freqDetectorVOLK(in);
+    volk_32fc_magnitude_squared_32f(in->power, &in->signal[1], in->sizeSignal);
+
+    for(uint32_t i = 0; i < in->sizeSignal; i++)
+    {
+        val = in->freq[i];
+#else
     for(uint32_t i = 0; i < sizeIn; i++)
     {
         val = freqDetector(in[i]);//detect freq
+#endif
 
         if(state == SyncTime)
         {
             static float power = 0;
+#if USE_VOLK
+            power = in->power[i];
+#else
             power = (in[i].real*in[i].real + in[i].image*in[i].image);
+#endif
 
             if(rxNFSK_SyncTime(val, power))
             {

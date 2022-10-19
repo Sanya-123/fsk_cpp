@@ -5,8 +5,8 @@
 
 typedef struct
 {
-    int64_t real;
-    int64_t image;
+    int16_t real;
+    int16_t image;
 }MyComplex;
 
 typedef struct
@@ -55,8 +55,16 @@ typedef enum{
 #define USE_FIXED_FRAME_SIZE        0 /* использовать пакеты с фиксированным размером */
 #define FIXED_FRAME_SIZE            1200  /*~1 WAKE frame with 1024 bytes data*/ /* рахмер фиксированного пакета */
 
-#define TX_VCO_STEP                 60.0 /*Modulate freq step per symbols*/ /*optimal 60-90*/ /* (Tx) аплитуда измернения фазы(частота=фазы/180*частота_дискретизации/2) за 1 отсчет */
+#define TX_VCO_STEP                 90.0 /*Modulate freq step per symbols*/ /*optimal 60-90*/ /* (Tx) аплитуда измернения фазы(частота=фазы/180*частота_дискретизации/2) за 1 отсчет */
 #define MAX_SPS                     16 /* (Tx) максимально возможный SPS (защиты нигде нету просто учитываеться этот параметр в фубере кодовой синхронизации) */
+//метод детектирования сомвола
+#define DETECT_BIT_METOD            2   //0-2
+/*
+ * 0 - беру только средний отсчет
+ * 1 - не учитываю крайние отсчеты
+ * 2 - просумирую все отссчеты в посылке для принятия решения
+ *
+ */
 
 //4FSK
 /* (Tx) 4 параметра ниже эквивалентны TX_VCO_STEP */
@@ -66,6 +74,10 @@ typedef enum{
 #define TX_VCO_4FSK_2               +90.0
 #define RX_POROG_RESHENIE           10000   /* (Rx) значение куото определяет порог выбора бвайта */
 #define POROG_DATA_END_4FSK         1000//4000 /* (Rx) эквивалент POROG_DATA_END */
+
+//VOLK Vector-Optimized Library of Kernels
+#define USE_VOLK                    1   //make sense if size > 1024
+#define FAST_SYNC                   1
 
 
 #endif // COMMON_FSK_H

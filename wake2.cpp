@@ -14,7 +14,7 @@
 #include <stdint.h>
 
 
-#define FRAME 2048      //максимальная длина пакета
+#define FRAME 4096      //максимальная длина пакета
 //#define USE_ADDR    /*use wake with address*/
 //wake
 //Коды байт-стаффинга:

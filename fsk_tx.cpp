@@ -1,6 +1,4 @@
 #include "fsk_tx.h"
-//#include <QtMath>
-//#include <math.h>
 
 #ifndef M_PI
 #define M_PI		3.14159265358979323846  /* pi */
@@ -9,23 +7,6 @@
 #define M_PI_2		1.57079632679489661923	/* pi/2 */
 #endif
 
-
-//randi([2 32], [1 32])*600
-//const float syncFrame[] = {-17000, 17000, -17000, 17000, 17000, 17000, 17000, 17000, 17000, 17000, 17000, -17000, 17000, 17000, -17000, \
-//                                    17000, -17000, 17000, 17000, 17000, 17000, 17000, -17000, 17000, -17000, 17000, 17000, 17000, -17000, 17000, \
-//                                    -17000, 17000, -17000, 17000, 17000, 17000, -17000, -17000, 17000, 17000, 17000, 17000, -17000, 17000, -17000, \
-//                                    17000, 17000, -17000, 17000, -17000, 17000, -17000, -17000, -17000, -17000, 17000, -17000, -17000, -17000, -17000, \
-//                                    -17000, 17000, 17000, -17000};
-
-//const float syncFrame[] = {17000, -17000, 17000, 17000, -17000, -17000, 17000, -17000, 17000, -17000, -17000, -17000, 17000, -17000, -17000, \
-//                           17000, 17000, 17000, -17000, -17000, 17000, -17000, -17000, 17000, 17000, -17000, 17000, -17000, 17000, -17000, \
-//                           -17000, 17000};
-
-////barker x7
-//const float syncFrame[] = {17000, 17000, 17000, 17000, 17000, 17000, 17000, 17000, 17000, 17000, 17000, 17000, 17000, 17000, 17000, 17000, \
-//                           -17000, -17000, -17000, -17000, -17000, -17000, -17000, -17000, \
-//                           17000, 17000, 17000, 17000, \
-//                           -17000, -17000, -17000, -17000};
 
 #define QT_SINE_TABLE_SIZE 256
 
@@ -323,8 +304,45 @@ MyComplex vco(float freq)
         phase += M_PI*2;
     }
 
-    res.real = _qFastCos(phase)*32768;
-    res.image = _qFastSin(phase)*32768;
+    res.real = _qFastCos(phase)*32767;
+    res.image = _qFastSin(phase)*32767;
+
+    return res;
+}
+
+const int16_t _sin_4dot[4] = {
+    0,
+    32767,
+    0,
+    -32767
+};
+
+const int16_t _cos_4dot[4] = {
+    32767,
+    0,
+    -32767,
+    0
+};
+
+MyComplex vco_optimize(float freq)
+{
+    static int8_t phase = 0;
+    if(freq > 0)//+90
+    {
+        phase++;
+
+        if(phase >=4)
+            phase -= 4;
+    }
+    else//-90
+    {
+        phase--;
+        if(phase < 0)
+            phase += 4;
+    }
+
+
+    MyComplex res = {_cos_4dot[phase], _sin_4dot[phase]};
 
     return res;
 }
@@ -360,7 +378,7 @@ float syncFrameTime[SYNC_FRAME_SIZE] = {TX_VCO_STEP, TX_VCO_STEP, TX_VCO_STEP, T
                                         TX_VCO_STEP, TX_VCO_STEP, TX_VCO_STEP, TX_VCO_STEP, \
                                        -TX_VCO_STEP, -TX_VCO_STEP, -TX_VCO_STEP, -TX_VCO_STEP};
 
-inline void txNFSK_addHeader(uint16_t sps, MyComplex *txData, uint32_t *pointTx)
+inline void txNFSK_addHeader(uint16_t sps, MyComplex *txData, uint32_t *pointTx, int repeat = 1)
 {
     const float tx1 = TX_VCO_STEP, tx0 = -TX_VCO_STEP;
     float tx;
@@ -396,26 +414,26 @@ inline void txNFSK_addHeader(uint16_t sps, MyComplex *txData, uint32_t *pointTx)
 
     //заголовочный порог
     for(uint32_t i = 0; i < ZEROS_DATA_SIZE; i++)
-        txData[(*pointTx)++] = vco(0);
+        txData[(*pointTx)+=repeat] = vco_optimize(0);
 
 //    //add preambles
 //    for(uint32_t i = 0; i < SYNC_FRAME_SIZE; i++)
-//        txData[iteration++] = vco(syncFrame[i]*180.0/32768);
+//        txData[iteration++] = vco_optimize(syncFrame[i]*180.0/32768);
 
     //add preambles time
     for(uint32_t i = 0; i < SYNC_FRAME_SIZE; i++)
-        txData[(*pointTx)++] = vco(syncFrameTime[i]);
+        txData[(*pointTx)+=repeat] = vco_optimize(syncFrameTime[i]);
 
     //add zeross
     for(uint32_t i = 0; i < (2*sps); i++)
-        txData[(*pointTx)++] = vco(tx0);
+        txData[(*pointTx)+=repeat] = vco_optimize(tx0);
 
     //add preambles code
     for(uint32_t i = 0; i < (SYNC_CODE_SIZE*sps); i++)
-        txData[(*pointTx)++] = vco(syncFrameCOde[i]);
+        txData[(*pointTx)+=repeat] = vco_optimize(syncFrameCOde[i]);
 }
 
-void tx2FSK(uint8_t *data, uint32_t sizeData, uint16_t sps, MyComplex *txData)
+void tx2FSK(uint8_t *data, uint32_t sizeData, uint16_t sps, MyComplex *txData, int repeat)
 {
     const float tx1 = TX_VCO_STEP, tx0 = -TX_VCO_STEP;
 
@@ -423,8 +441,10 @@ void tx2FSK(uint8_t *data, uint32_t sizeData, uint16_t sps, MyComplex *txData)
     uint32_t numBits = 0;
     float tx;
 
+#if USE_FIXED_FRAME_SIZE
     uint32_t numFrame = 0;//если фиксированный размер кадра
     uint32_t oneFrameSize = ZEROS_DATA_SIZE + SYNC_FRAME_SIZE + ZEROS_DATA_SIZE + (SYNC_CODE_SIZE*sps) + sizeData*8*sps + ZEROS_DATA_SIZE;
+#endif
 
     uint32_t iteration = 0;
 
@@ -437,7 +457,7 @@ void tx2FSK(uint8_t *data, uint32_t sizeData, uint16_t sps, MyComplex *txData)
     {
 #endif
 
-       txNFSK_addHeader(sps, txData, &iteration);
+       txNFSK_addHeader(sps, txData, &iteration, repeat);
 
 #if USE_FIXED_FRAME_SIZE
     for(uint32_t i = 0; i < FIXED_FRAME_SIZE*8; i++)
@@ -462,7 +482,7 @@ void tx2FSK(uint8_t *data, uint32_t sizeData, uint16_t sps, MyComplex *txData)
 
         for(uint16_t j = 0; j < sps; j++)
         {
-            txData[iteration++] = vco(tx);
+            txData[iteration+=repeat] = vco_optimize(tx);
         }
 
         numBits++;
@@ -475,14 +495,14 @@ void tx2FSK(uint8_t *data, uint32_t sizeData, uint16_t sps, MyComplex *txData)
 
     //хвостовой порог
     for(uint32_t i = 0; i < ZEROS_DATA_SIZE; i++)
-        txData[iteration++] = vco(0);
+        txData[iteration+=repeat] = vco_optimize(0);
 
 #if USE_FIXED_FRAME_SIZE
     }
 #endif
 }
 
-void tx4FSK(uint8_t *data, uint32_t sizeData, uint16_t sps, MyComplex *txData)
+void tx4FSK(uint8_t *data, uint32_t sizeData, uint16_t sps, MyComplex *txData, int repeat)
 {
     const float _4_tx[4] = {TX_VCO_4FSK_0, TX_VCO_4FSK_1, TX_VCO_4FSK_2, TX_VCO_4FSK_3};
 
@@ -490,8 +510,10 @@ void tx4FSK(uint8_t *data, uint32_t sizeData, uint16_t sps, MyComplex *txData)
     uint32_t numBits = 0;
     float tx;
 
+#if USE_FIXED_FRAME_SIZE
     uint32_t numFrame = 0;//если фиксированный размер кадра
     uint32_t oneFrameSize = ZEROS_DATA_SIZE + SYNC_FRAME_SIZE + ZEROS_DATA_SIZE + (SYNC_CODE_SIZE*sps) + sizeData*4*sps + ZEROS_DATA_SIZE;
+#endif
 
     uint32_t iteration = 0;
 
@@ -506,7 +528,7 @@ void tx4FSK(uint8_t *data, uint32_t sizeData, uint16_t sps, MyComplex *txData)
     {
 #endif
 
-        txNFSK_addHeader(sps, txData, &iteration);
+        txNFSK_addHeader(sps, txData, &iteration, repeat);
 
 #if USE_FIXED_FRAME_SIZE
     for(uint32_t i = 0; i < FIXED_FRAME_SIZE*8; i++)
@@ -525,7 +547,7 @@ void tx4FSK(uint8_t *data, uint32_t sizeData, uint16_t sps, MyComplex *txData)
 
         for(uint16_t j = 0; j < sps; j++)
         {
-            txData[iteration++] = vco(tx);
+            txData[iteration+=repeat] = vco(tx);
         }
 
         numBits+=2;
@@ -538,7 +560,7 @@ void tx4FSK(uint8_t *data, uint32_t sizeData, uint16_t sps, MyComplex *txData)
 
     //хвостовой порог
     for(uint32_t i = 0; i < ZEROS_DATA_SIZE; i++)
-        txData[iteration++] = vco(0);
+        txData[iteration+=repeat] = vco(0);
 
 #if USE_FIXED_FRAME_SIZE
     }
